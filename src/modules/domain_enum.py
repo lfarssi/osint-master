@@ -30,7 +30,7 @@ def enumerate_subdomains(domain):
     found=[]
     BASE_DIR=Path(__file__).resolve().parent.parent.parent
     WORDLIST=BASE_DIR / "resources" / "subdomains.txt"
-    with open("resources/subdomains.txt" ) as file:
+    with open(WORDLIST) as file:
         subdomains=file.read().splitlines()
     for subdomain in subdomains:
         target= f"{subdomain}.{domain}"

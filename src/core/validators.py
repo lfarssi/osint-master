@@ -12,5 +12,6 @@ def validate_domain(domain):
     return re.match(pattern, domain) is not None
 
 def validate_username(username):
-    return len(username.strip())>=3
+    pattern =r"^[a-zA-Z0-9._-]{3,30}$"
+    return re.match(pattern, username) is not None
     

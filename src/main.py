@@ -1,7 +1,9 @@
 import argparse
+import asyncio
 from core.validators import (validate_ip, validate_domain, validate_username)
 from modules.ip_lookup import ip_lookup
 from modules.username_lookup import username_lookup
+from modules.domain_enum import resolve_domain
 from core.utils import save_output
 
 def main():
@@ -37,11 +39,14 @@ def main():
         if not validate_domain(args.domain):
             print("Invalid Domain name")
             return
+        result=resolve_domain(args.domain)
+        print(result)
+        
     if args.username:
         if not validate_username(args.username):
             print("Invalid Username")
             return
-        result=username_lookup(args.username)
+        result=asyncio.run(username_lookup(args.username))
         for platform, status in result.items():
             print(f"{platform}: {status}")
             

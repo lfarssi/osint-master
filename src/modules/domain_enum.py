@@ -1,11 +1,12 @@
 import dns.resolver
-
+from pathlib import Path
 RECORD_TYPES=[
     "A",
     "MX",
     "NS",
     "CNAME"
     ]
+
 
 def resolve_domain(domain):
     results={
@@ -23,3 +24,23 @@ def resolve_domain(domain):
     except Exception as e:
         results["error"]=str(e)
     return results
+
+
+def enumerate_subdomains(domain):
+    found=[]
+    BASE_DIR=Path(__file__).resolve().parent.parent.parent
+    WORDLIST=BASE_DIR / "resources" / "subdomains.txt"
+    with open("resources/subdomains.txt" ) as file:
+        subdomains=file.read().splitlines()
+    for subdomain in subdomains:
+        target= f"{subdomain}.{domain}"
+        try:
+            answers=dns.resolver.resolve(target, "A")
+            ips=[answer.to_text() for answer in answers]
+            found.append({
+                "subdomain":subdomain,
+                "ips":ips
+            })
+        except:
+            continue
+    return found

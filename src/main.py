@@ -3,7 +3,7 @@ import asyncio
 from core.validators import (validate_ip, validate_domain, validate_username)
 from modules.ip_lookup import ip_lookup
 from modules.username_lookup import username_lookup
-from modules.domain_enum import resolve_domain
+from modules.domain_enum import resolve_domain,enumerate_subdomains
 from core.utils import save_output
 
 def main():
@@ -41,7 +41,9 @@ def main():
             return
         result=resolve_domain(args.domain)
         print(result)
-        
+        subdomains=enumerate_subdomains(args.domain)
+        for subdomain in subdomains:
+            print(subdomain)
     if args.username:
         if not validate_username(args.username):
             print("Invalid Username")

@@ -1,6 +1,7 @@
 import argparse
 from core.validators import (validate_ip, validate_domain, validate_username)
 from modules.ip_lookup import ip_lookup
+from modules.username_lookup import username_lookup
 from core.utils import save_output
 
 def main():
@@ -40,6 +41,10 @@ def main():
         if not validate_username(args.username):
             print("Invalid Username")
             return
+        result=username_lookup(args.username)
+        for platform, status in result.items():
+            print(f"{platform}: {status}")
+            
     if args.output:
         save_output(args.output, result)
         print(f"Saved to output/{args.output}")

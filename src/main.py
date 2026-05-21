@@ -41,7 +41,7 @@ def main():
             return
         result=resolve_domain(args.domain)
         print(result)
-        subdomains=enumerate_subdomains(args.domain)
+        subdomains=asyncio.run(enumerate_subdomains(args.domain))
         for subdomain in subdomains:
             print(subdomain)
     if args.username:

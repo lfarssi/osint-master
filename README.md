@@ -1,32 +1,29 @@
 # OSINT Master
 
-A command-line OSINT (Open Source Intelligence) tool built with Python.
+A command-line OSINT (Open Source Intelligence) tool for passive reconnaissance using publicly available data.
 
-It can look up information about **IP addresses**, **usernames**, and **domains** — including subdomain enumeration and subdomain takeover detection.
+## What It Does
 
-## Features
+| Feature | Description |
+|---------|-------------|
+| **IP Lookup** | Get geolocation, ISP, ASN, and abuse indicators for any public IP |
+| **Username Search** | Check if a username exists on 5+ platforms + get GitHub profile details |
+| **Domain Scan** | DNS records, subdomain discovery, SSL certificates, and takeover detection |
 
-- **IP Lookup** — Get geolocation, ISP, ASN, timezone, and more for any public IP
-- **Username Search** — Check if a username exists on GitHub, Reddit, GitLab, Pinterest
-- **Domain Enumeration** — Look up DNS records (A, MX, NS, CNAME) for any domain
-- **Subdomain Discovery** — Find subdomains using a wordlist with async DNS resolution
-- **SSL Certificate Info** — Show issuer, subject, and expiry for each subdomain
-- **Subdomain Takeover Detection** — Check subdomains against known cloud provider fingerprints (AWS S3, GitHub Pages, Heroku, Azure, etc.)
-- **JSON Export** — Save all results to a structured JSON file
+## Prerequisites
 
-## Requirements
-
-- Python 3.8+
-- See `requirements.txt` for all dependencies
+- Python 3.8 or higher
+- pip (Python package manager)
+- Linux recommended (tested on Ubuntu 20.04+)
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/osint-master.git
+git clone <repository-url>
 cd osint-master
 
-# Create a virtual environment (recommended)
+# Create a virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
@@ -34,27 +31,91 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Only **2 dependencies**: `requests` and `dnspython`. That's it.
+
 ## Usage
 
 Run from the `src/` directory:
 
 ```bash
 cd src
+```
 
-# IP Lookup
+### IP Lookup
+
+```bash
 python main.py -i 8.8.8.8
+```
 
-# Username Search
-python main.py -u john_doe
+Output:
+```
+ISP: Google LLC
+Organization: Google Public DNS
+City: Ashburn
+Region: Virginia
+Country: United States
+ASN: AS15169 Google LLC
+Known Issues: No reported abuse
+```
 
-# Domain Enumeration (includes subdomains, SSL, and takeover detection)
+### Username Search
+
+```bash
+python main.py -u johndoe
+```
+
+Output:
+```
+GitHub: Found
+GitLab: Not Found
+Reddit: Found
+Pinterest: Not Found
+Medium: Not Found
+
+GitHub Profile:
+  Bio: Software developer
+  Followers: 42
+  Public Repos: 15
+  Last Active: 2026-07-19T10:00:00Z
+```
+
+### Domain Scan
+
+```bash
 python main.py -d example.com
+```
 
-# Save results to JSON
-python main.py -d example.com -o my_scan
+Output:
+```
+Main Domain: example.com
 
-# Combine multiple lookups
-python main.py -i 8.8.8.8 -u john_doe -d example.com -o full_scan
+DNS Records:
+  A      93.184.216.34
+  NS     a.iana-servers.net.
+
+Subdomains found: 2
+  - www.example.com (IP: 93.184.216.34)
+    SSL Certificate: Valid until 2030-03-01
+  - mail.example.com (IP: 93.184.216.34)
+    SSL Certificate: Not found
+
+Potential Subdomain Takeover Risks: None detected
+```
+
+### Save Results to File
+
+```bash
+python main.py -i 8.8.8.8 -o result1.txt
+python main.py -u johndoe -o result2.txt
+python main.py -d example.com -o result3.txt
+```
+
+Results are saved in the `output/` directory as both `.txt` (readable) and `.json` (structured).
+
+### Help
+
+```bash
+python main.py --help
 ```
 
 ## Project Structure
@@ -62,64 +123,92 @@ python main.py -i 8.8.8.8 -u john_doe -d example.com -o full_scan
 ```
 osint-master/
 ├── src/
-│   ├── main.py                  # Entry point — CLI arguments and output formatting
-│   ├── core/
-│   │   ├── http_client.py       # HTTP GET wrapper (used by IP lookup)
-│   │   ├── validators.py        # Input validation (IP, domain, username)
-│   │   ├── utils.py             # Save results to JSON
-│   │   └── takeover_fingerprints.py  # Cloud provider error fingerprints
-│   └── modules/
-│       ├── ip_lookup.py         # IP geolocation lookup (ip-api.com)
-│       ├── username_lookup.py   # Async username search across platforms
-│       └── domain_enum.py       # DNS resolution, subdomain enum, takeover check
+│   ├── main.py              # Entry point — CLI, validation, output formatting
+│   ├── ip_lookup.py          # IP geolocation and abuse check (ip-api.com)
+│   ├── username_lookup.py    # Username search across platforms
+│   └── domain_enum.py        # DNS, subdomains, SSL, takeover detection
+├── tests/                    # Test files
+├── output/                   # Saved results (created automatically)
 ├── resources/
-│   └── subdomains.txt           # Wordlist for subdomain enumeration
-├── output/                      # JSON output files (created automatically)
-├── requirements.txt
+│   └── subdomains.txt        # Wordlist for subdomain enumeration
+├── requirements.txt          # Python dependencies
+├── .gitignore
 └── README.md
 ```
 
-## APIs Used
+## APIs and Data Sources
 
-| API | Purpose | Auth Required |
-|-----|---------|---------------|
-| [ip-api.com](http://ip-api.com) | IP geolocation | No (free tier) |
-| GitHub API | Username lookup | No |
-| Reddit | Username lookup | No |
-| GitLab | Username lookup | No |
-| Pinterest | Username lookup | No |
+| Source | Used For | Auth Required | Cost |
+|--------|----------|---------------|------|
+| [ip-api.com](http://ip-api.com) | IP geolocation, ISP, abuse indicators | No | Free (non-commercial) |
+| [GitHub API](https://api.github.com) | Username check + profile details | No | Free (rate limited) |
+| [crt.sh](https://crt.sh) | SSL certificate transparency logs | No | Free |
+| GitLab, Reddit, Pinterest, Medium | Username existence check | No | Free |
+
+All APIs are used within their Terms of Service. No API keys required.
 
 ## How Subdomain Takeover Detection Works
 
-1. We enumerate subdomains by trying each word in the wordlist (e.g., `www`, `api`, `dev`)
-2. For each found subdomain, we fetch its HTTP page
-3. We check the page content against known error messages from cloud providers
-4. If a match is found (e.g., "NoSuchBucket" from AWS), the subdomain might be vulnerable
+**What is a subdomain takeover?**
 
-**Why this matters:** If a subdomain's CNAME points to an unclaimed cloud resource (like a deleted S3 bucket), an attacker could register that resource and take control of the subdomain.
+When a subdomain (like `blog.example.com`) has a CNAME record pointing to a cloud service (like GitHub Pages or AWS S3), but the resource on that service has been deleted, an attacker could register that resource and take control of the subdomain.
+
+**How we detect it:**
+
+1. Find subdomains using a wordlist (e.g., `www`, `mail`, `api`, `blog`)
+2. Check each subdomain's CNAME record — does it point to a cloud provider?
+3. Fetch the page — does it show an "unclaimed resource" error message?
+4. If both match, the subdomain is likely vulnerable
+
+**Why CNAMEs matter:**
+
+A CNAME is like a redirect. If `blog.example.com` has a CNAME pointing to `example.github.io`, and that GitHub Pages site no longer exists, anyone could create it and control what appears on `blog.example.com`.
+
+**Supported providers:** AWS S3, GitHub Pages, Heroku, Azure, Shopify
 
 **Limitations:**
-- This is a basic check (Version 1) — it only checks HTTP page content
-- It doesn't verify CNAME targets directly
+- This checks HTTP content only (basic detection)
 - False positives are possible
-- Always verify findings manually
+- Always verify findings manually before reporting
 
-## Ethical Considerations
+## How SSL Certificate Lookup Works
 
-This tool is for **educational and authorized testing purposes only**.
+We use [crt.sh](https://crt.sh), a free Certificate Transparency (CT) log search engine. CT logs are public records of all SSL certificates issued by Certificate Authorities. This is passive OSINT — we query a public database instead of connecting to the target server.
 
-- Only scan domains and IPs you own or have explicit permission to test
-- Respect rate limits on APIs
-- Do not use this tool for malicious purposes
-- Follow your local laws regarding OSINT and network scanning
+## Ethical and Legal Considerations
+
+⚠️ **This tool is for educational purposes only.**
+
+- **Get permission** before gathering information about any target
+- **Respect privacy** — collect only what's necessary
+- **Follow laws** — comply with GDPR, CFAA, and local regulations
+- **Report responsibly** — privately notify affected parties of vulnerabilities
+- **Stay ethical** — use this tool only for learning and authorized security testing
+
+The developers are not responsible for any misuse of this tool.
 
 ## Why Python?
 
-- Rich ecosystem of libraries for DNS, HTTP, and async operations
-- `dnspython` and `aiodns` make DNS resolution simple and fast
-- `asyncio` + `aiohttp` allow checking many targets concurrently
-- Easy to read and maintain for a team project
+- Simple and readable — easy for anyone to understand the code
+- `requests` library makes HTTP calls straightforward
+- `dnspython` handles all DNS operations cleanly
+- `concurrent.futures` provides simple parallelism (no complex async)
+- Large ecosystem of cybersecurity tools and libraries
 
-## Why Async?
+## Known Limitations
 
-Subdomain enumeration checks many hostnames. Doing this one-by-one would be slow. With async (`aiodns`, `aiohttp`), we send all DNS queries at once and process them as they come back. This makes enumeration much faster.
+- Username detection relies on HTTP status codes, which can give false results
+- Subdomain wordlist is small (for demonstration) — expand it for real use
+- SSL info comes from CT logs, which may not include very new certificates
+- Takeover detection is basic (content fingerprinting only)
+- ip-api.com has a rate limit of 45 requests per minute
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `ModuleNotFoundError` | Make sure you activated the venv: `source venv/bin/activate` |
+| `Connection timeout` | Check your internet connection |
+| IP lookup returns error | The IP might be private (10.x, 192.168.x, etc.) |
+| No subdomains found | The domain might not have common subdomain names |
+| crt.sh timeout | crt.sh can be slow — the tool will continue without SSL info |

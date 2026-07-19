@@ -1,182 +1,250 @@
-# ----------------------------------------------------------
-# OSINT Multi-Function Tool — Main Entry Point
-# ----------------------------------------------------------
-# Usage:
-#   python main.py -i 8.8.8.8              (IP lookup)
-#   python main.py -u john_doe             (username search)
-#   python main.py -d example.com          (domain enum)
-#   python main.py -d example.com -o results   (save to JSON)
+# -------------------------------------------------------
+# OSINT Master — Main Entry Point
+# -------------------------------------------------------
+# A multi-function OSINT tool for passive reconnaissance.
 #
-# You can combine flags:
-#   python main.py -i 8.8.8.8 -u john -o scan
-# ----------------------------------------------------------
+# Usage:
+#   python main.py -i 8.8.8.8                (IP lookup)
+#   python main.py -u john_doe               (username search)
+#   python main.py -d example.com            (domain scan)
+#   python main.py -i 8.8.8.8 -o result.txt  (save to file)
+# -------------------------------------------------------
 
 import argparse
-import asyncio
+import json
+import os
+import re
+import ipaddress
+from pathlib import Path
 
-from core.validators import validate_ip, validate_domain, validate_username
-from core.utils import save_output
-from modules.ip_lookup import ip_lookup
-from modules.username_lookup import username_lookup
-from modules.domain_enum import resolve_domain, enumerate_subdomains
+from ip_lookup import lookup as ip_lookup
+from username_lookup import lookup as username_lookup
+from domain_enum import scan as domain_scan
 
 
-# ===========================================================
+# -------------------------------------------------------
+# Input Validation
+# -------------------------------------------------------
+
+def is_valid_ip(ip):
+    """Check if the string is a valid IP address."""
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
+
+
+def is_valid_domain(domain):
+    """Check if the string looks like a valid domain name."""
+    pattern = r"^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$"
+    return re.match(pattern, domain) is not None
+
+
+def is_valid_username(username):
+    """Check if the username contains only safe characters (3-30 chars)."""
+    pattern = r"^[a-zA-Z0-9._@-]{1,50}$"
+    return re.match(pattern, username) is not None
+
+
+# -------------------------------------------------------
 # Output Formatting
-# ===========================================================
-# These functions turn raw dictionaries into clean,
-# human-readable text so the terminal output looks nice.
-# ===========================================================
+# -------------------------------------------------------
+# These functions print results in a clean, readable format
+# matching the project requirements.
+# -------------------------------------------------------
 
-def print_header(title):
-    """Print a section header with a line underneath."""
-    print()
-    print(f"{'=' * 50}")
-    print(f"  {title}")
-    print(f"{'=' * 50}")
-
-
-def print_ip_results(result):
-    """Print IP lookup results in a clean format."""
-    print_header("IP Lookup Results")
-
+def format_ip_output(result):
+    """Format IP lookup results as a readable string."""
     if not result["success"]:
-        print(f"  Error: {result['error']}")
-        return
+        return f"Error: {result['error']}"
 
-    print(f"  IP:           {result['ip']}")
-    print(f"  Country:      {result['country']}")
-    print(f"  State:        {result['state']}")
-    print(f"  City:         {result['city']}")
-    print(f"  ISP:          {result['isp']}")
-    print(f"  Organization: {result['org']}")
-    print(f"  ASN:          {result['asn']}")
-    print(f"  Location:     {result['location']}")
-    print(f"  Timezone:     {result['timezone']}")
-    print(f"  Proxy:        {result['proxy']}")
-    print(f"  Hosting:      {result['hosting']}")
+    lines = []
+    lines.append(f"ISP: {result['isp']}")
+    lines.append(f"Organization: {result['org']}")
+    lines.append(f"City: {result['city']}")
+    lines.append(f"Region: {result['region']}")
+    lines.append(f"Country: {result['country']}")
+    lines.append(f"ASN: {result['asn']}")
+    lines.append(f"Known Issues: {', '.join(result['known_issues'])}")
+
+    return "\n".join(lines)
 
 
-def print_domain_results(dns_results, subdomains):
-    """Print domain enumeration results in a clean format."""
-    print_header(f"Domain: {dns_results['domain']}")
+def format_username_output(result):
+    """Format username lookup results as a readable string."""
+    lines = []
 
-    # Show DNS records
-    if dns_results.get("error"):
-        print(f"  DNS Error: {dns_results['error']}")
-    else:
-        print("\n  DNS Records:")
-        for record in dns_results["records"]:
-            print(f"    {record['type']:6s}  {record['value']}")
+    # Show which platforms the username was found on
+    for platform, status in result["platforms"].items():
+        lines.append(f"{platform}: {status}")
 
-    # Show subdomains
-    if not subdomains:
-        print("\n  No subdomains found.")
-        return
+    # Show GitHub profile details if available
+    profile = result.get("github_profile")
+    if profile:
+        lines.append("")
+        lines.append("GitHub Profile:")
+        lines.append(f"  Bio: {profile['bio']}")
+        lines.append(f"  Followers: {profile['followers']}")
+        lines.append(f"  Following: {profile['following']}")
+        lines.append(f"  Public Repos: {profile['public_repos']}")
+        lines.append(f"  Last Active: {profile['last_active']}")
 
-    print(f"\n  Found {len(subdomains)} subdomain(s):")
+    return "\n".join(lines)
+
+
+def format_domain_output(result):
+    """Format domain scan results as a readable string."""
+    lines = []
+
+    lines.append(f"Main Domain: {result['domain']}")
+    lines.append("")
+
+    # DNS Records
+    if result["dns_records"]:
+        lines.append("DNS Records:")
+        for record in result["dns_records"]:
+            lines.append(f"  {record['type']:6s} {record['value']}")
+        lines.append("")
+
+    # Subdomains
+    subdomains = result["subdomains"]
+    lines.append(f"Subdomains found: {len(subdomains)}")
 
     for sub in subdomains:
-        print(f"\n  {'─' * 44}")
-        print(f"  Subdomain: {sub['subdomain']}")
+        lines.append(f"  - {sub['subdomain']} (IP: {sub['ip']})")
 
-        # IPs
-        print(f"  IPs:")
-        for ip in sub["ips"]:
-            print(f"    - {ip}")
-
-        # CNAME records
-        if sub["cnames"]:
-            print(f"  CNAMEs:")
-            for cname in sub["cnames"]:
-                print(f"    - {cname}")
-
-        # SSL info
-        if sub["ssl"]:
-            print(f"  SSL:")
-            print(f"    Issuer:  {sub['ssl']['issuer']}")
-            print(f"    Subject: {sub['ssl']['subject']}")
-            print(f"    Expires: {sub['ssl']['expires']}")
+        # SSL certificate info
+        if sub.get("ssl"):
+            lines.append(f"    SSL Certificate: Valid until {sub['ssl']['expires']}")
         else:
-            print(f"  SSL: No HTTPS")
+            lines.append(f"    SSL Certificate: Not found")
 
-        # Takeover risk
-        if sub["takeover"]["risk"]:
-            print(f"  Takeover Risk: YES")
-            print(f"    Provider: {sub['takeover']['provider']}")
-            print(f"    Pattern:  {sub['takeover']['pattern']}")
-        else:
-            print(f"  Takeover Risk: No")
+        # CNAME record
+        if sub.get("cname"):
+            lines.append(f"    CNAME: {sub['cname']}")
+
+    # Takeover risks
+    lines.append("")
+    takeover_risks = result["takeover_risks"]
+
+    if takeover_risks:
+        lines.append("Potential Subdomain Takeover Risks:")
+        for risk in takeover_risks:
+            takeover = risk["takeover"]
+            lines.append(f"  - Subdomain: {risk['subdomain']}")
+            lines.append(f"    {takeover['reason']}")
+            lines.append(f"    Provider: {takeover['provider']}")
+            lines.append(f"    Recommended Action: Remove or update the DNS record to prevent potential misuse")
+    else:
+        lines.append("Potential Subdomain Takeover Risks: None detected")
+
+    return "\n".join(lines)
 
 
-def print_username_results(results):
-    """Print username lookup results in a clean format."""
-    print_header("Username Lookup Results")
+# -------------------------------------------------------
+# Save Output to File
+# -------------------------------------------------------
 
-    for platform, status in results.items():
-        # Add a checkmark or X for quick scanning
-        icon = "+" if status == "Found" else "-"
-        print(f"  [{icon}] {platform:12s}  {status}")
+def save_to_file(filename, text_output, raw_data):
+    """
+    Save results to the output/ directory.
+    Creates two files:
+      - filename.txt  (human-readable text)
+      - filename.json (structured data for further processing)
+    """
+    output_dir = Path(__file__).resolve().parent.parent / "output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save human-readable text
+    txt_path = output_dir / filename
+    if not filename.endswith(".txt"):
+        txt_path = output_dir / f"{filename}.txt"
+
+    with open(txt_path, "w") as file:
+        file.write(text_output)
+
+    # Also save as JSON for structured data
+    json_path = txt_path.with_suffix(".json")
+    with open(json_path, "w") as file:
+        json.dump(raw_data, file, indent=2)
+
+    return txt_path
 
 
-# ===========================================================
-# Main Function
-# ===========================================================
+# -------------------------------------------------------
+# Main
+# -------------------------------------------------------
 
 def main():
-    # Set up command-line arguments
     parser = argparse.ArgumentParser(
-        description="OSINT Multi-Function Tool"
+        prog="osintmaster",
+        description="Welcome to osintmaster multi-function Tool",
     )
-    parser.add_argument("-i", "--ip", help="Look up info for an IP address")
-    parser.add_argument("-u", "--username", help="Search for a username on platforms")
-    parser.add_argument("-d", "--domain", help="Enumerate a domain (DNS + subdomains)")
-    parser.add_argument("-o", "--output", help="Save results to a JSON file")
+    parser.add_argument("-i", metavar='"IP Address"', help="Search information by IP address")
+    parser.add_argument("-u", metavar='"Username"', help="Search information by username")
+    parser.add_argument("-d", metavar='"Domain"', help="Enumerate subdomains and check for takeover risks")
+    parser.add_argument("-o", metavar='"FileName"', help="File name to save output")
 
     args = parser.parse_args()
 
-    # We'll collect all results here for saving to JSON later
-    all_results = {}
+    # If no arguments given, show help
+    if not any([args.i, args.u, args.d]):
+        parser.print_help()
+        return
+
+    all_output = []   # Human-readable text for each module
+    all_data = {}     # Raw data for JSON export
 
     # --- IP Lookup ---
-    if args.ip:
-        if not validate_ip(args.ip):
-            print("Error: Invalid IP address format.")
+    if args.i:
+        ip = args.i.strip('"')
+        if not is_valid_ip(ip):
+            print("Error: Invalid IP address.")
             return
-        result = ip_lookup(args.ip)
-        print_ip_results(result)
-        all_results["ip_lookup"] = result
 
-    # --- Domain Enumeration ---
-    if args.domain:
-        if not validate_domain(args.domain):
-            print("Error: Invalid domain name.")
-            return
-        dns_results = resolve_domain(args.domain)
-        subdomains = asyncio.run(enumerate_subdomains(args.domain))
-        print_domain_results(dns_results, subdomains)
-        all_results["domain"] = {
-            "dns": dns_results,
-            "subdomains": subdomains
-        }
+        print(f"Looking up IP: {ip}...")
+        result = ip_lookup(ip)
+        output = format_ip_output(result)
+        print(output)
+        all_output.append(output)
+        all_data["ip_lookup"] = result
 
     # --- Username Lookup ---
-    if args.username:
-        if not validate_username(args.username):
-            print("Error: Invalid username (use 3-30 chars: letters, numbers, . _ -).")
+    if args.u:
+        username = args.u.strip('"@')
+        if not is_valid_username(username):
+            print("Error: Invalid username.")
             return
-        result = asyncio.run(username_lookup(args.username))
-        print_username_results(result)
-        all_results["username_lookup"] = result
 
-    # --- Save to JSON ---
-    if args.output and all_results:
-        print_header("Saving Results")
-        save_output(args.output, all_results)
+        print(f"Searching for username: {username}...")
+        result = username_lookup(username)
+        output = format_username_output(result)
+        print(output)
+        all_output.append(output)
+        all_data["username_lookup"] = result
 
-    # If no arguments were given, show help
-    if not any([args.ip, args.domain, args.username]):
-        parser.print_help()
+    # --- Domain Scan ---
+    if args.d:
+        domain = args.d.strip('"')
+        if not is_valid_domain(domain):
+            print("Error: Invalid domain name.")
+            return
+
+        print(f"Scanning domain: {domain}...")
+        print()
+        result = domain_scan(domain)
+        output = format_domain_output(result)
+        print(output)
+        all_output.append(output)
+        all_data["domain_scan"] = result
+
+    # --- Save to File ---
+    if args.o:
+        filename = args.o.strip('"')
+        full_text = "\n\n".join(all_output)
+        saved_path = save_to_file(filename, full_text, all_data)
+        print(f"\nData saved in {saved_path}")
 
 
 if __name__ == "__main__":

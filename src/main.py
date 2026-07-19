@@ -1,15 +1,3 @@
-# -------------------------------------------------------
-# OSINT Master — Main Entry Point
-# -------------------------------------------------------
-# A multi-function OSINT tool for passive reconnaissance.
-#
-# Usage:
-#   python main.py -i 8.8.8.8                (IP lookup)
-#   python main.py -u john_doe               (username search)
-#   python main.py -d example.com            (domain scan)
-#   python main.py -i 8.8.8.8 -o result.txt  (save to file)
-# -------------------------------------------------------
-
 import argparse
 import json
 import os
@@ -20,11 +8,6 @@ from pathlib import Path
 from ip_lookup import lookup as ip_lookup
 from username_lookup import lookup as username_lookup
 from domain_enum import scan as domain_scan
-
-
-# -------------------------------------------------------
-# Input Validation
-# -------------------------------------------------------
 
 def is_valid_ip(ip):
     """Check if the string is a valid IP address."""
@@ -47,12 +30,6 @@ def is_valid_username(username):
     return re.match(pattern, username) is not None
 
 
-# -------------------------------------------------------
-# Output Formatting
-# -------------------------------------------------------
-# These functions print results in a clean, readable format
-# matching the project requirements.
-# -------------------------------------------------------
 
 def format_ip_output(result):
     """Format IP lookup results as a readable string."""
@@ -75,11 +52,9 @@ def format_username_output(result):
     """Format username lookup results as a readable string."""
     lines = []
 
-    # Show which platforms the username was found on
     for platform, status in result["platforms"].items():
         lines.append(f"{platform}: {status}")
 
-    # Show GitHub profile details if available
     profile = result.get("github_profile")
     if profile:
         lines.append("")
@@ -142,9 +117,6 @@ def format_domain_output(result):
     return "\n".join(lines)
 
 
-# -------------------------------------------------------
-# Save Output to File
-# -------------------------------------------------------
 
 def save_to_file(filename, text_output, raw_data):
     """
@@ -156,7 +128,6 @@ def save_to_file(filename, text_output, raw_data):
     output_dir = Path(__file__).resolve().parent.parent / "output"
     os.makedirs(output_dir, exist_ok=True)
 
-    # Save human-readable text
     txt_path = output_dir / filename
     if not filename.endswith(".txt"):
         txt_path = output_dir / f"{filename}.txt"
@@ -164,7 +135,6 @@ def save_to_file(filename, text_output, raw_data):
     with open(txt_path, "w") as file:
         file.write(text_output)
 
-    # Also save as JSON for structured data
     json_path = txt_path.with_suffix(".json")
     with open(json_path, "w") as file:
         json.dump(raw_data, file, indent=2)
@@ -172,9 +142,6 @@ def save_to_file(filename, text_output, raw_data):
     return txt_path
 
 
-# -------------------------------------------------------
-# Main
-# -------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
@@ -193,8 +160,8 @@ def main():
         parser.print_help()
         return
 
-    all_output = []   # Human-readable text for each module
-    all_data = {}     # Raw data for JSON export
+    all_output = []  
+    all_data = {}    
 
     # --- IP Lookup ---
     if args.i:

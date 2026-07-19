@@ -1,22 +1,8 @@
-# -------------------------------------------------------
-# Username Lookup Module
-# -------------------------------------------------------
-# Checks if a username exists on popular platforms by
-# sending HTTP requests and checking the status code.
-#
-# Also gets detailed profile info from GitHub's API
-# (bio, followers, repos) since it's free and reliable.
-#
-# Uses ThreadPoolExecutor to check all platforms at
-# the same time instead of one by one (faster).
-# -------------------------------------------------------
-
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
 
-# Platforms to check. The {} gets replaced with the username.
-# We need at least 5 (project requirement).
+
 PLATFORMS = {
     "GitHub": "https://github.com/{}",
     "GitLab": "https://gitlab.com/{}",
@@ -86,18 +72,14 @@ def lookup(username):
 
     Returns a dictionary with platform results and GitHub profile.
     """
-    # Check all platforms at the same time using threads
-    # This is faster than checking one by one
     platform_results = {}
 
     with ThreadPoolExecutor(max_workers=5) as pool:
-        # Create a list of tasks: (platform_name, url)
         tasks = []
         for name, url_template in PLATFORMS.items():
             url = url_template.format(username)
             tasks.append(pool.submit(check_platform, name, url))
 
-        # Collect results as they finish
         for task in tasks:
             platform_name, status = task.result()
             platform_results[platform_name] = status

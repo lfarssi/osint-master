@@ -1,22 +1,3 @@
-# -------------------------------------------------------
-# Domain Enumeration Module
-# -------------------------------------------------------
-# This module does 4 things:
-#
-#   1. Look up DNS records for the main domain
-#   2. Find subdomains using a wordlist
-#   3. Get SSL certificate info from crt.sh
-#   4. Check for subdomain takeover risks
-#
-# For SSL certificates, we use crt.sh — a free website
-# that shows all certificates issued for a domain.
-# This is passive OSINT (we don't connect to the server).
-#
-# For takeover detection, we check if a subdomain has a
-# CNAME pointing to a cloud service, then fetch the page
-# to see if it shows an "unclaimed" error message.
-# -------------------------------------------------------
-
 import dns.resolver
 import requests
 import socket
@@ -24,16 +5,6 @@ import ssl
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-
-# -------------------------------------------------------
-# Takeover Detection Data
-# -------------------------------------------------------
-# Each cloud provider shows a specific error message when
-# a resource (bucket, app, page) doesn't exist.
-#
-# "cnames" = domain patterns that point to this provider
-# "content" = error messages that appear on unclaimed pages
-# -------------------------------------------------------
 
 TAKEOVER_SIGNATURES = {
     "AWS S3": {
@@ -61,9 +32,6 @@ TAKEOVER_SIGNATURES = {
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
 
 
-# -------------------------------------------------------
-# 1. DNS Records
-# -------------------------------------------------------
 
 def get_dns_records(domain):
     """
@@ -84,15 +52,11 @@ def get_dns_records(domain):
                     "value": answer.to_text()
                 })
         except Exception:
-            # This record type doesn't exist for this domain — skip it
             pass
 
     return records
 
 
-# -------------------------------------------------------
-# 2. Subdomain Enumeration
-# -------------------------------------------------------
 
 def check_subdomain(subdomain):
     """
@@ -116,17 +80,14 @@ def find_subdomains(domain):
     Uses threads to check multiple subdomains at the same time.
     Returns a list of found subdomains with their IPs.
     """
-    # Load the wordlist file
     base_dir = Path(__file__).resolve().parent.parent
     wordlist = base_dir / "resources" / "subdomains.txt"
 
     with open(wordlist) as file:
         prefixes = file.read().splitlines()
 
-    # Build the full subdomain names
     targets = [f"{prefix}.{domain}" for prefix in prefixes]
 
-    # Check all subdomains at the same time using threads
     found = []
     with ThreadPoolExecutor(max_workers=10) as pool:
         results = pool.map(check_subdomain, targets)
@@ -136,10 +97,6 @@ def find_subdomains(domain):
 
     return found
 
-
-# -------------------------------------------------------
-# 3. SSL Certificate Info (from crt.sh)
-# -------------------------------------------------------
 
 def get_ssl_certificates(domain):
     """
@@ -153,7 +110,6 @@ def get_ssl_certificates(domain):
         {"www.example.com": {"expires": "2030-03-01", "issuer": "Let's Encrypt"}}
     """
     try:
-        # Query crt.sh for all certificates matching this domain
         url = f"https://crt.sh/?q=%.{domain}&output=json"
         response = requests.get(url, headers=HEADERS, timeout=15)
 
@@ -164,18 +120,14 @@ def get_ssl_certificates(domain):
     except Exception:
         return {}
 
-    # Build a lookup table: subdomain -> latest certificate info
-    # crt.sh returns many results, we only keep the most recent per subdomain
+
     cert_info = {}
 
     for cert in certs:
-        # name_value can contain multiple domains separated by newlines
         names = cert.get("name_value", "").split("\n")
         expires = cert.get("not_after", "Unknown")
         issuer = cert.get("issuer_name", "Unknown")
 
-        # Clean up the issuer name (it comes in a long format)
-        # Example: "C=US, O=Let's Encrypt, CN=R3" -> "Let's Encrypt"
         issuer_short = issuer
         if "O=" in issuer:
             for part in issuer.split(","):
@@ -185,10 +137,8 @@ def get_ssl_certificates(domain):
 
         for name in names:
             name = name.strip()
-            # Skip wildcard entries like "*.example.com"
             if name.startswith("*"):
                 continue
-            # Only keep the most recent certificate per subdomain
             if name not in cert_info:
                 cert_info[name] = {
                     "expires": expires,
@@ -213,10 +163,8 @@ def get_ssl_direct(hostname):
             conn.connect((hostname, 443))
             cert = conn.getpeercert()
 
-        # Extract expiry date
         expires = cert.get("notAfter", "Unknown")
 
-        # Extract issuer organization
         issuer_parts = dict(item[0] for item in cert.get("issuer", []))
         issuer = issuer_parts.get("organizationName", "Unknown")
 
@@ -225,10 +173,6 @@ def get_ssl_direct(hostname):
     except Exception:
         return None
 
-
-# -------------------------------------------------------
-# 4. Subdomain Takeover Detection
-# -------------------------------------------------------
 
 def get_cname(subdomain):
     """
@@ -244,7 +188,6 @@ def get_cname(subdomain):
     """
     try:
         answers = dns.resolver.resolve(subdomain, "CNAME")
-        # Return the first CNAME target
         return answers[0].to_text()
     except Exception:
         return None
@@ -267,7 +210,6 @@ def check_takeover(subdomain, cname):
     if not cname:
         return {"vulnerable": False}
 
-    # Step 1: Check if the CNAME points to a known cloud provider
     matched_provider = None
     for provider, data in TAKEOVER_SIGNATURES.items():
         for pattern in data["cnames"]:
@@ -280,7 +222,6 @@ def check_takeover(subdomain, cname):
     if not matched_provider:
         return {"vulnerable": False}
 
-    # Step 2: Fetch the page and check for error messages
     try:
         response = requests.get(
             f"http://{subdomain}",
@@ -299,7 +240,6 @@ def check_takeover(subdomain, cname):
                 }
 
     except Exception:
-        # Connection failed — could also indicate the target doesn't exist
         return {
             "vulnerable": True,
             "provider": matched_provider,
@@ -309,10 +249,6 @@ def check_takeover(subdomain, cname):
 
     return {"vulnerable": False}
 
-
-# -------------------------------------------------------
-# 5. Full Domain Scan (combines everything above)
-# -------------------------------------------------------
 
 def scan(domain):
     """
@@ -324,32 +260,25 @@ def scan(domain):
 
     Returns a dictionary with all the results.
     """
-    # Get DNS records for the main domain
     dns_records = get_dns_records(domain)
 
-    # Find subdomains using the wordlist
     subdomains = find_subdomains(domain)
 
-    # Get SSL certificate info from crt.sh (one request for all subdomains)
     all_certs = get_ssl_certificates(domain)
 
-    # For each found subdomain, get CNAME and check for takeover
     takeover_risks = []
 
     for sub in subdomains:
         name = sub["subdomain"]
 
-        # Get CNAME record
         cname = get_cname(name)
         sub["cname"] = cname
 
-        # Match SSL certificate info from crt.sh
         if name in all_certs:
             sub["ssl"] = all_certs[name]
         else:
             sub["ssl"] = None
 
-        # Check for takeover risk
         takeover = check_takeover(name, cname)
         sub["takeover"] = takeover
 
